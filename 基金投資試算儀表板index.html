@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>基金 10 年投資模擬與風險圖解儀表板</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 pb-12">
+
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Header 與標的切換選單 -->
+    <header class="mb-8 border-b border-slate-200 pb-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-slate-900">📊 高配息基金投資模擬與風險分析儀表板</h1>
+        <p class="text-slate-500 mt-1">整合「夏普值、標準差、Beta 值」三大量表，自動診斷基金風險與報酬效率</p>
+      </div>
+      
+      <div class="flex items-center gap-3 w-full lg:w-auto">
+        <!-- 下拉選單 -->
+        <select id="fundSelector" onchange="switchFund()" class="bg-white border-2 border-blue-500 text-blue-900 font-bold px-4 py-2 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-base">
+          <option value="FRP4" selected>富蘭克林坦伯頓穩定月收益 (美元) [FRP4]</option>
+          <option value="SCP6">施羅德-環球收益成長(美元) [SCP6]</option>
+          <option value="DSP5">安聯收益成長基金-AM穩定月收 (美元) [DSP5]</option>
+          <option value="ACE17">聯博-美國成長基金 AP (美元) [ACE17]</option>
+        </select>
+
+        <button id="fetchDataBtn" onclick="fetchLiveData()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-sm transition-all shrink-0 active:scale-95">
+          <svg id="syncIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          <span id="btnText">即時更新</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 1. 基礎參數設定區 -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 id="currentFundName" class="text-xl font-bold text-slate-800 border-l-4 border-blue-500 pl-3">
+          富蘭克林坦伯頓全球投資系列穩定月收益基金美元A(Mdis)
+        </h2>
+        <span id="dataStatus" class="text-xs text-slate-400">狀態：已載入最新資料</span>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">投入金額 (台幣)</label>
+          <input type="number" id="inputCapital" value="1000000" class="w-full bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">手續費 (%)</label>
+          <input type="number" id="inputFeeRate" value="5" step="0.1" class="w-full bg-blue-50 border border-blue-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">美元匯率 (USD/TWD)</label>
+          <input type="number" id="inputFx" value="31.00" step="0.01" class="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">基金淨值 (USD)</label>
+          <input type="number" id="inputNav" value="9.8500" step="0.0001" class="w-full bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">每單位分配金額 (USD)</label>
+          <input type="number" id="inputPayout" value="0.0670" step="0.0001" class="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+      </div>
+
+      <!-- 計算結果卡片 -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-4 border-t border-slate-100 text-center">
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+          <div class="text-xs text-slate-500 mb-1">實際投入 (台幣)</div>
+          <div id="outActualTwd" class="text-lg font-bold text-slate-800">0</div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+          <div class="text-xs text-slate-500 mb-1">實際投入 (美金)</div>
+          <div id="outActualFx" class="text-lg font-bold text-slate-800">0</div>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+          <div class="text-xs text-slate-500 mb-1">購買單位數</div>
+          <div id="outUnits" class="text-lg font-bold text-slate-800">0</div>
+        </div>
+        <div class="bg-pink-50 p-3 rounded-lg border border-pink-200">
+          <div class="text-xs text-pink-600 mb-1">每月配息 (台幣)</div>
+          <div id="outMonthlyPayout" class="text-lg font-bold text-red-600">0</div>
+        </div>
+        <div class="bg-pink-50 p-3 rounded-lg border border-pink-200">
+          <div class="text-xs text-pink-600 mb-1">年化配息 (台幣)</div>
+          <div id="outYearlyPayout" class="text-lg font-bold text-red-600">0</div>
+        </div>
+        <div class="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+          <div class="text-xs text-amber-700 mb-1">試算年化配息率</div>
+          <div id="outYieldRate" class="text-lg font-bold text-amber-700">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 風險與波動指標數據區 -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
+      <h3 class="text-lg font-bold text-slate-800 mb-3">🛡️ 基金風險與波動指標分析</h3>
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-center border-collapse">
+          <thead>
+            <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+              <th class="p-2.5 border border-slate-200 text-left">風險項目</th>
+              <th class="p-2.5 border border-slate-200">六個月</th>
+              <th class="p-2.5 border border-slate-200">一年</th>
+              <th class="p-2.5 border border-slate-200">三年 (基準)</th>
+              <th class="p-2.5 border border-slate-200">五年</th>
+              <th class="p-2.5 border border-slate-200">十年</th>
+            </tr>
+          </thead>
+          <tbody id="riskTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- 三張風險圖表評估量表視覺化 -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
+        
+        <!-- 量表 1：夏普值 (Sharpe Ratio) -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-bold text-slate-800">① 夏普值 (Sharpe)</span>
+            <span class="text-xs text-slate-500">風險換報酬效率</span>
+          </div>
+          <div class="text-xs text-slate-500 mb-3">「同樣冒險，誰賺比較多？」 (合格線 ≈ 1.0)</div>
+          
+          <div class="grid grid-cols-6 gap-1 text-center text-xs font-bold text-white mb-2">
+            <div class="bg-red-500 p-1 rounded-l" title="< 0 不合格">< 0</div>
+            <div class="bg-orange-500 p-1" title="0 ~ 0.5 偏弱">0-0.5</div>
+            <div class="bg-amber-400 p-1 text-slate-800" title="0.5 ~ 1.0 普通">0.5-1</div>
+            <div class="bg-emerald-500 p-1" title="1.0 ~ 1.5 不錯">1-1.5</div>
+            <div class="bg-blue-600 p-1" title="1.5 ~ 2.0 優秀">1.5-2</div>
+            <div class="bg-purple-600 p-1 rounded-r" title="> 2.0 頂尖">> 2.0</div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600 font-semibold">
+            <span>❌不合格</span>
+            <span>⚠️偏弱</span>
+            <span>🟡普通</span>
+            <span>🟢不錯</span>
+            <span>🔵優秀</span>
+            <span>🟣頂尖</span>
+          </div>
+          <div id="sharpeEvaluation" class="mt-3 p-2 bg-white rounded border border-slate-200 text-xs text-center font-bold text-slate-700">
+            目前診斷：計算中...
+          </div>
+        </div>
+
+        <!-- 量表 2：標準差 (Standard Deviation) -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-bold text-slate-800">② 標準差 (波動度)</span>
+            <span class="text-xs text-slate-500">坐捷運 vs 雲霄飛車</span>
+          </div>
+          <div class="text-xs text-slate-500 mb-3">「波動大小與心臟強度」 (舒適線 ≤ 12~15%)</div>
+          
+          <div class="grid grid-cols-5 gap-1 text-center text-xs font-bold text-white mb-2">
+            <div class="bg-emerald-600 p-1 rounded-l" title="< 5% 非常穩">< 5%</div>
+            <div class="bg-emerald-400 p-1 text-slate-800" title="5 ~ 10% 穩健">5-10%</div>
+            <div class="bg-amber-400 p-1 text-slate-800" title="10 ~ 15% 中等">10-15%</div>
+            <div class="bg-orange-500 p-1" title="15 ~ 25% 偏震">15-25%</div>
+            <div class="bg-red-600 p-1 rounded-r" title="> 25% 高風險">> 25%</div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600 font-semibold">
+            <span>非常穩</span>
+            <span>穩健</span>
+            <span>中等</span>
+            <span>偏震</span>
+            <span>高風險</span>
+          </div>
+          <div id="stdEvaluation" class="mt-3 p-2 bg-white rounded border border-slate-200 text-xs text-center font-bold text-slate-700">
+            目前診斷：計算中...
+          </div>
+        </div>
+
+        <!-- 量表 3：貝他值 (Beta) -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-bold text-slate-800">③ 貝他值 (Beta)</span>
+            <span class="text-xs text-slate-500">跟盤速度 (大盤=1)</span>
+          </div>
+          <div class="text-xs text-slate-500 mb-3">「基金個性與連動度」 (舒適區 0.7 ~ 1.2)</div>
+          
+          <div class="grid grid-cols-5 gap-1 text-center text-xs font-bold text-white mb-2">
+            <div class="bg-slate-500 p-1 rounded-l" title="< 0.5 超防禦">< 0.5</div>
+            <div class="bg-emerald-500 p-1" title="0.5 ~ 0.8 防禦">0.5-0.8</div>
+            <div class="bg-emerald-600 p-1" title="0.8 ~ 1.0 平衡">0.8-1.0</div>
+            <div class="bg-blue-600 p-1" title="1.0 ~ 1.3 成長">1.0-1.3</div>
+            <div class="bg-slate-800 p-1 rounded-r" title="> 1.3 激進">> 1.3</div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600 font-semibold">
+            <span>超防禦</span>
+            <span>防禦型</span>
+            <span>平衡型</span>
+            <span>成長型</span>
+            <span>激進型</span>
+          </div>
+          <div id="betaEvaluation" class="mt-3 p-2 bg-white rounded border border-slate-200 text-xs text-center font-bold text-slate-700">
+            目前診斷：計算中...
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 3. 情境切換 Tab -->
+    <div class="mb-6">
+      <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-2" id="scenarioTabs"></div>
+    </div>
+
+    <!-- 4. 圖表與表格區域 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-x-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="scenarioTitle" class="text-lg font-bold text-slate-800">第一種假設：各種參數都不變</h3>
+          <span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">動態比例試算</span>
+        </div>
+
+        <table class="w-full text-sm text-center border-collapse">
+          <thead>
+            <tr class="bg-blue-50 text-slate-700 font-semibold border-b border-slate-200">
+              <th class="p-2 border border-slate-200">年份</th>
+              <th class="p-2 border border-slate-200">單位數</th>
+              <th class="p-2 border border-slate-200">淨值</th>
+              <th class="p-2 border border-slate-200">本金(美金)</th>
+              <th class="p-2 border border-slate-200">匯率</th>
+              <th class="p-2 border border-slate-200">本金(台幣)</th>
+              <th class="p-2 border border-slate-200">每單位配息</th>
+              <th class="p-2 border border-slate-200">每月配息</th>
+              <th class="p-2 border border-slate-200">年化配息</th>
+            </tr>
+          </thead>
+          <tbody id="simulationTableBody"></tbody>
+        </table>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-4 border-t border-slate-200 bg-slate-50 p-4 rounded-lg">
+          <div>
+            <div class="text-xs text-slate-500">10年後期末本金</div>
+            <div id="statFinalCapital" class="text-base font-bold text-slate-800">0</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">10年累積已領配息</div>
+            <div id="statTotalPayout" class="text-base font-bold text-red-600">0</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">本金 + 累積已領</div>
+            <div id="statTotalReturn" class="text-base font-bold text-slate-900">0</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">10年累積報酬率</div>
+            <div id="statRoi" class="text-lg font-extrabold text-emerald-600">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+        <h3 class="text-lg font-bold text-slate-800 mb-4">10 年資產累積走勢圖</h3>
+        <div class="relative w-full h-80">
+          <canvas id="assetChart"></canvas>
+        </div>
+        <p class="text-xs text-slate-400 text-center mt-4">* 藍線為當年度折算台幣本金，紅線為累積已領取的總配息金額。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 多標的資料庫 (已更新 FRP4 精準截圖數據)
+    const fundDatabase = {
+      "FRP4": {
+        code: "FRP4",
+        name: "富蘭克林坦伯頓全球投資系列穩定月收益基金美元A(Mdis)",
+        symbol: "0P00000W4I.LU",
+        nav: 9.8500,
+        payout: 0.0670,
+        risk: {
+          std: ["5.94", "5.07", "6.42", "7.78", "10.42"],
+          sharpe: ["0.21", "0.50", "0.30", "0.16", "0.14"],
+          beta: ["0.33", "0.36", "0.47", "0.52", "0.58"]
+        }
+      },
+      "SCP6": {
+        code: "SCP6",
+        name: "施羅德環球基金系列-環球收益成長(美元)A-月配固定2",
+        symbol: "0P00015L0K.LU",
+        nav: 141.1969,
+        payout: 1.1841,
+        risk: {
+          std: ["12.35", "10.65", "9.64", "10.48", "N/A"],
+          sharpe: ["0.28", "0.51", "0.40", "0.16", "N/A"],
+          beta: ["0.74", "0.78", "0.74", "0.68", "N/A"]
+        }
+      },
+      "DSP5": {
+        code: "DSP5",
+        name: "安聯收益成長基金-AM穩定月收類股(美元)",
+        symbol: "0P0000X1I1.LU",
+        nav: 8.5763,
+        payout: 0.0550,
+        risk: {
+          std: ["10.30", "7.77", "7.45", "9.86", "12.44"],
+          sharpe: ["0.23", "0.35", "0.35", "0.12", "0.18"],
+          beta: ["0.62", "0.58", "0.62", "0.67", "0.67"]
+        }
+      },
+      "ACE17": {
+        code: "ACE17",
+        name: "聯博-美國成長基金 AP(總報酬月配)級別美元",
+        symbol: "0P000122XN.LU",
+        nav: 71.5100,
+        payout: 0.8322,
+        risk: {
+          std: ["14.20", "12.80", "15.10", "16.40", "18.20"],
+          sharpe: ["0.45", "0.52", "0.48", "0.39", "0.41"],
+          beta: ["1.05", "1.02", "1.08", "1.10", "1.07"]
+        }
+      }
+    };
+
+    const scenarioConfigs = [
+      { id: 1, name: "第一種假設", desc: "各種參數都不變", navRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], fxRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], payoutRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+      { id: 2, name: "第二種假設", desc: "淨值持續下降 / 波動", navRatios: [1.11, 0.98, 0.84, 0.70, 0.84, 0.91, 0.98, 1.05, 1.12, 1.12], fxRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], payoutRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+      { id: 3, name: "第三種假設", desc: "淨值不變，匯率持續波動", navRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], fxRatios: [0.998, 1.0, 1.016, 1.032, 1.0, 0.983, 0.967, 0.935, 0.903, 0.935], payoutRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+      { id: 4, name: "第四種假設", desc: "淨值下降且匯率波動", navRatios: [1.12, 0.98, 0.84, 0.98, 0.84, 1.12, 0.98, 0.84, 0.98, 0.84], fxRatios: [0.998, 0.967, 0.935, 0.903, 0.871, 0.871, 0.903, 0.903, 0.935, 0.967], payoutRatios: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+      { id: 5, name: "第五種假設", desc: "淨值下降、匯率波動且配息率遞減", navRatios: [1.12, 0.98, 0.84, 0.98, 0.84, 1.12, 0.98, 0.84, 0.98, 0.84], fxRatios: [0.976, 0.976, 0.976, 0.976, 0.976, 0.976, 0.976, 0.976, 0.976, 0.976], payoutRatios: [1.0, 1.0, 0.91, 0.91, 0.83, 0.83, 0.75, 0.75, 0.66, 0.66] }
+    ];
+
+    let currentScenarioId = 1;
+    let chartInstance = null;
+
+    const fundSelector = document.getElementById('fundSelector');
+    const inputCapital = document.getElementById('inputCapital');
+    const inputFeeRate = document.getElementById('inputFeeRate');
+    const inputFx = document.getElementById('inputFx');
+    const inputNav = document.getElementById('inputNav');
+    const inputPayout = document.getElementById('inputPayout');
+
+    function formatNum(num, decimals = 0) {
+      return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    function switchFund() {
+      const selectedKey = fundSelector.value;
+      const fund = fundDatabase[selectedKey];
+
+      document.getElementById('currentFundName').innerText = fund.name;
+      inputNav.value = fund.nav;
+      inputPayout.value = fund.payout;
+
+      renderRiskTable(fund.risk);
+      evaluateRiskVisuals(fund.risk);
+      updateCalculations();
+    }
+
+    function renderRiskTable(risk) {
+      const tbody = document.getElementById('riskTableBody');
+      tbody.innerHTML = `
+        <tr class="border-b border-slate-100 hover:bg-slate-50">
+          <td class="p-2.5 border border-slate-200 font-semibold text-left bg-slate-50">標準差 (Volatility)</td>
+          <td class="p-2.5 border border-slate-200">${risk.std[0]}%</td>
+          <td class="p-2.5 border border-slate-200">${risk.std[1]}%</td>
+          <td class="p-2.5 border border-slate-200 font-bold text-amber-600 bg-amber-50/30">${risk.std[2]}%</td>
+          <td class="p-2.5 border border-slate-200">${risk.std[3]}%</td>
+          <td class="p-2.5 border border-slate-200">${risk.std[4] === 'N/A' ? 'N/A' : risk.std[4] + '%'}</td>
+        </tr>
+        <tr class="border-b border-slate-100 hover:bg-slate-50">
+          <td class="p-2.5 border border-slate-200 font-semibold text-left bg-slate-50">Sharpe Ratio (夏普值)</td>
+          <td class="p-2.5 border border-slate-200 text-blue-600">${risk.sharpe[0]}</td>
+          <td class="p-2.5 border border-slate-200 text-blue-600">${risk.sharpe[1]}</td>
+          <td class="p-2.5 border border-slate-200 font-bold text-blue-700 bg-blue-50/30">${risk.sharpe[2]}</td>
+          <td class="p-2.5 border border-slate-200 text-blue-600">${risk.sharpe[3]}</td>
+          <td class="p-2.5 border border-slate-200 text-blue-600">${risk.sharpe[4]}</td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2.5 border border-slate-200 font-semibold text-left bg-slate-50">Beta (貝他值)</td>
+          <td class="p-2.5 border border-slate-200">${risk.beta[0]}</td>
+          <td class="p-2.5 border border-slate-200">${risk.beta[1]}</td>
+          <td class="p-2.5 border border-slate-200 font-bold text-slate-900 bg-slate-100/50">${risk.beta[2]}</td>
+          <td class="p-2.5 border border-slate-200">${risk.beta[3]}</td>
+          <td class="p-2.5 border border-slate-200">${risk.beta[4]}</td>
+        </tr>
+      `;
+    }
+
+    function evaluateRiskVisuals(risk) {
+      const sharpe = parseFloat(risk.sharpe[2]);
+      const std = parseFloat(risk.std[2]);
+      const beta = parseFloat(risk.beta[2]);
+
+      let sharpeText = "";
+      if (isNaN(sharpe) || sharpe < 0) sharpeText = "⚠️ 3年夏普值 " + (isNaN(sharpe) ? 'N/A' : sharpe) + "：❌ 不合格";
+      else if (sharpe <= 0.5) sharpeText = "⚠️ 3年夏普值 " + sharpe + "：⚠️ 偏弱 (性價比一般)";
+      else if (sharpe <= 1.0) sharpeText = "💡 3年夏普值 " + sharpe + "：🟡 普通";
+      else if (sharpe <= 1.5) sharpeText = "✅ 3年夏普值 " + sharpe + "：🟢 不錯";
+      else sharpeText = "🔥 3年夏普值 " + sharpe + "：🔵 優秀/頂尖";
+      document.getElementById('sharpeEvaluation').innerText = sharpeText;
+
+      let stdText = "";
+      if (isNaN(std)) stdText = "數據不足";
+      else if (std < 5) stdText = "🟢 3年標準差 " + std + "%：非常穩 (定存+)";
+      else if (std <= 10) stdText = "🟢 3年標準差 " + std + "%：穩健型 (低波動/舒適線內)";
+      else if (std <= 15) stdText = "🟡 3年標準差 " + std + "%：中等 (舒適線內 ≤15%)";
+      else if (std <= 25) stdText = "🟠 3年標準差 " + std + "%：偏震 (成長型波動)";
+      else stdText = "🔴 3年標準差 " + std + "%：高風險 (雲霄飛車)";
+      document.getElementById('stdEvaluation').innerText = stdText;
+
+      let betaText = "";
+      if (isNaN(beta)) betaText = "數據不足";
+      else if (beta < 0.5) betaText = "🛡️ 3年 Beta " + beta + "：超防禦型 (波動遠小於大盤)";
+      else if (beta <= 0.8) betaText = "🛡️ 3年 Beta " + beta + "：防禦型 (實務舒適區 0.7~1.2)";
+      else if (beta <= 1.0) betaText = "⚖️ 3年 Beta " + beta + "：平衡型 (實務舒適區)";
+      else if (beta <= 1.3) betaText = "🚀 3年 Beta " + beta + "：成長型 (跟漲型)";
+      else betaText = "⚡ 3年 Beta " + beta + "：激進型 (高波動)";
+      document.getElementById('betaEvaluation').innerText = betaText;
+    }
+
+    async function fetchLiveData() {
+      const btnText = document.getElementById('btnText');
+      const syncIcon = document.getElementById('syncIcon');
+      const status = document.getElementById('dataStatus');
+
+      btnText.innerText = '更新中...';
+      syncIcon.classList.add('animate-spin');
+
+      try {
+        const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
+        const fxData = await fxRes.json();
+        if (fxData && fxData.rates && fxData.rates.TWD) {
+          inputFx.value = fxData.rates.TWD.toFixed(2);
+        }
+
+        status.innerText = `狀態：匯率已更新至最新 (${new Date().toLocaleTimeString()})`;
+        status.className = 'text-xs text-emerald-600 font-semibold';
+      } catch (err) {
+        status.innerText = '狀態：即時更新失敗，維持當前設定';
+        status.className = 'text-xs text-amber-600 font-semibold';
+      } finally {
+        btnText.innerText = '即時更新';
+        syncIcon.classList.remove('animate-spin');
+        updateCalculations();
+      }
+    }
+
+    function updateCalculations() {
+      const capital = parseFloat(inputCapital.value) || 0;
+      const feeRate = (parseFloat(inputFeeRate.value) || 0) / 100;
+      const baseFx = parseFloat(inputFx.value) || 1;
+      const baseNav = parseFloat(inputNav.value) || 1;
+      const basePayout = parseFloat(inputPayout.value) || 0;
+
+      const actualTwd = capital * (1 - feeRate);
+      const actualFx = actualTwd / baseFx;
+      const units = actualFx / baseNav;
+
+      const monthlyFxPayout = units * basePayout;
+      const monthlyTwdPayout = monthlyFxPayout * baseFx;
+      const yearlyTwdPayout = monthlyTwdPayout * 12;
+      const yieldRate = actualTwd > 0 ? (yearlyTwdPayout / actualTwd) : 0;
+
+      document.getElementById('outActualTwd').innerText = formatNum(actualTwd);
+      document.getElementById('outActualFx').innerText = formatNum(actualFx, 2);
+      document.getElementById('outUnits').innerText = formatNum(units, 4);
+      document.getElementById('outMonthlyPayout').innerText = formatNum(monthlyTwdPayout);
+      document.getElementById('outYearlyPayout').innerText = formatNum(yearlyTwdPayout);
+      document.getElementById('outYieldRate').innerText = (yieldRate * 100).toFixed(2) + '%';
+
+      renderSimulationTable(units, capital, baseNav, baseFx, basePayout);
+    }
+
+    function initTabs() {
+      const tabsContainer = document.getElementById('scenarioTabs');
+      tabsContainer.innerHTML = '';
+
+      scenarioConfigs.forEach(s => {
+        const btn = document.createElement('button');
+        btn.className = `px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+          s.id === currentScenarioId
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+        }`;
+        btn.innerText = s.name;
+        btn.onclick = () => {
+          currentScenarioId = s.id;
+          initTabs();
+          updateCalculations();
+        };
+        tabsContainer.appendChild(btn);
+      });
+    }
+
+    function renderSimulationTable(units, initCapital, baseNav, baseFx, basePayout) {
+      const config = scenarioConfigs.find(s => s.id === currentScenarioId);
+      document.getElementById('scenarioTitle').innerText = `${config.name}：${config.desc}`;
+
+      const tbody = document.getElementById('simulationTableBody');
+      tbody.innerHTML = '';
+
+      let accumPayout = 0;
+      let yearlyCapitalHistory = [];
+      let accumPayoutHistory = [];
+
+      for (let i = 0; i < 10; i++) {
+        const year = i + 1;
+        const nav = baseNav * config.navRatios[i];
+        const fx = baseFx * config.fxRatios[i];
+        const payout = basePayout * config.payoutRatios[i];
+
+        const capitalFx = units * nav;
+        const capitalTwd = capitalFx * fx;
+        const monthlyPayoutTwd = units * payout * fx;
+        const yearlyPayoutTwd = monthlyPayoutTwd * 12;
+
+        accumPayout += yearlyPayoutTwd;
+
+        yearlyCapitalHistory.push(capitalTwd);
+        accumPayoutHistory.push(accumPayout);
+
+        const tr = document.createElement('tr');
+        tr.className = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+        tr.innerHTML = `
+          <td class="p-2 border border-slate-200 font-semibold">${year}</td>
+          <td class="p-2 border border-slate-200">${formatNum(units, 2)}</td>
+          <td class="p-2 border border-slate-200 font-semibold ${nav < baseNav ? 'text-red-600' : ''}">${formatNum(nav, 4)}</td>
+          <td class="p-2 border border-slate-200">${formatNum(capitalFx, 2)}</td>
+          <td class="p-2 border border-slate-200 ${fx < baseFx ? 'text-red-600' : ''}">${formatNum(fx, 2)}</td>
+          <td class="p-2 border border-slate-200">${formatNum(capitalTwd)}</td>
+          <td class="p-2 border border-slate-200 ${payout < basePayout ? 'text-red-600' : ''}">${formatNum(payout, 4)}</td>
+          <td class="p-2 border border-slate-200">${formatNum(monthlyPayoutTwd)}</td>
+          <td class="p-2 border border-slate-200 font-bold text-slate-800">${formatNum(yearlyPayoutTwd)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      const finalCapital = yearlyCapitalHistory[9];
+      const totalReturn = finalCapital + accumPayout;
+      const roi = initCapital > 0 ? ((totalReturn - initCapital) / initCapital) * 100 : 0;
+
+      document.getElementById('statFinalCapital').innerText = formatNum(finalCapital);
+      document.getElementById('statTotalPayout').innerText = formatNum(accumPayout);
+      document.getElementById('statTotalReturn').innerText = formatNum(totalReturn);
+      document.getElementById('statRoi').innerText = roi.toFixed(2) + '%';
+
+      renderChart(yearlyCapitalHistory, accumPayoutHistory);
+    }
+
+    function renderChart(capitalData, payoutData) {
+      const ctx = document.getElementById('assetChart').getContext('2d');
+      const labels = Array.from({length: 10}, (_, i) => `第 ${i + 1} 年`);
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: '當期剩餘本金 (台幣)',
+              data: capitalData,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              fill: true,
+              tension: 0.2
+            },
+            {
+              label: '累積已領配息 (台幣)',
+              data: payoutData,
+              borderColor: '#ef4444',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              fill: true,
+              tension: 0.2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            y: {
+              ticks: { callback: (val) => '$' + (val / 10000).toFixed(0) + '萬' }
+            }
+          }
+        }
+      });
+    }
+
+    [inputCapital, inputFeeRate, inputFx, inputNav, inputPayout].forEach(el => {
+      el.addEventListener('input', updateCalculations);
+    });
+
+    initTabs();
+    switchFund();
+  </script>
+</body>
+</html>
